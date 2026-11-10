@@ -45,13 +45,10 @@ fizzbuzz(Parent, Index, Start, End) ->
     Parent ! {done, Index, node() , Flattened}.
 
 solve(N) ->
-    if N rem 15 == 0 ->
-           io_lib:format("~p fizzbuzz", [N]);
-       N rem 3 == 0 ->
-           io_lib:format("~p fizz", [N]);
-       N rem 5 == 0 ->
-           io_lib:format("~p buzz", [N]);
-       true ->
-           io_lib:format("~p", [N])
-    end.
+    solve(N, N rem 3, N rem 5).
+
+solve(N, 0, 0) -> io_lib:format("~p fizzbuzz", [N]);
+solve(N, 0, _) -> io_lib:format("~p fizz", [N]);
+solve(N, _, 0) -> io_lib:format("~p buzz", [N]);
+solve(N, _, _) -> io_lib:format("~p", [N]).
 
