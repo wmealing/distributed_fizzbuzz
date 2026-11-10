@@ -83,6 +83,68 @@ The node list is still hardcoded at the top of `hit:distribute/1`. Edit it and
 recompile (or run `r3:compile().` inside `rebar3 shell`) to try other cluster
 shapes.
 
+Distributed Fibonacci
+---------------------
+
+`fib.erl` splits the work across the same three nodes, this time for the
+Fibonacci sequence. A naive Fibonacci can't be split, because every term
+depends on the two before it. Each node gets around that by using *fast
+doubling* to jump straight to F(Start) and F(Start+1) in O(log Start) steps,
+then counts forward to the end of its chunk with plain addition. No node waits
+on another.
+
+    1> fib:distribute(10).
+    Node: node1@localhost | F(1) = 1
+    ...
+    Node: node2@localhost | F(5) = 5
+    ...
+    Node: node3@localhost | F(10) = 55
+    ok
+
+`fib:distribute()` computes F(1) to F(100). Unlike `hit`, it prints a
+`FAILED` line for any node that can't be reached or doesn't have the module
+loaded, so a missing chunk never goes unnoticed.
+
+Distributed Mandelbrot
+----------------------
+
+`mandel.erl` is the workload where distribution actually pays off. Every
+pixel takes up to 1000 iterations of floating-point maths, but each row
+comes back as one small binary with a byte per pixel.
+
+`mandel:distribute()` renders across `[node() | nodes()]`, which is this
+node plus every node it's connected to, so you don't list nodes in the code.
+It starts one worker per scheduler on each node, deals rows out round-robin
+so every worker gets some of the expensive rows through the middle of the
+set, and writes `mandelbrot.pgm` to the current directory.
+
+    1> net_adm:ping('wmealing@192.168.1.91').
+    2> net_adm:ping('wmealing@192.168.1.162').
+    3> nl(mandel).
+    4> mandel:distribute(1600).
+    Node: 'wmealing@192.168.1.162' | rows: 792
+    Node: 'wmealing@192.168.1.180' | rows: 272
+    Node: 'wmealing@192.168.1.91' | rows: 536
+    Rendered 2400x1600 in 810 ms
+    {ok,"mandelbrot.pgm"}
+
+Start every node with `-name user@<ip>` and the same `-setcookie`. Measured
+on a LAN with an 8-core Mac and two Fedora boxes (16 and 24 cores), rendering
+2400x1600:
+
+| Workers                       | Time     |
+|-------------------------------|----------|
+| Mac, 1 process                | 35.5 s   |
+| Mac, all 8 cores              | 4.3 s    |
+| .91 alone (16 cores)          | 2.4 s    |
+| .162 alone (24 cores)         | 1.7 s    |
+| .91 + .162 (40 cores)         | 1.07 s   |
+| All three (48 cores)          | 0.81 s   |
+
+All six runs produced byte-identical images.
+
+![Mandelbrot set rendered across three nodes](docs/mandelbrot.png)
+
 Benefits of distributed FizzBuzz
 --------------------------------
 
@@ -100,17 +162,20 @@ getting in the way. As a learning exercise it has real benefits:
   line with its node shows who computed what.
 - **Scales horizontally, in theory.** Add a node to the list and every node
   gets a smaller chunk. With a big enough range and expensive enough work per
-  number, the extra nodes do cut wall-clock time.
+  number, the extra nodes do cut wall-clock time. `mandel` shows this in
+  practice.
 - **No dependencies.** It uses only `kernel` and `stdlib`, so the whole thing
   fits in your head.
 
 Drawbacks of distributed FizzBuzz
 ---------------------------------
 
-- **It's much slower than plain FizzBuzz.** Each number costs a few
-  nanoseconds to compute, while each RPC round-trip costs tens of
-  microseconds on localhost and milliseconds over a real network. The network
-  costs far more than the work it carries.
+- **The network often costs more than the work.** Each RPC round-trip costs
+  tens of microseconds on localhost and milliseconds over a real network.
+  Distribution only pays off when each chunk does more work than that.
+  Neither FizzBuzz nor Fibonacci comes close: one local process finishes
+  1000 numbers in tens of microseconds, less than a single round-trip. See
+  `bench:run/0` below.
 - **Results come back as strings.** Every line is formatted on the worker and
   copied back to the caller, so the data you move grows with the range. A
   single node could generate it with no copying at all.
@@ -136,6 +201,30 @@ Drawbacks of distributed FizzBuzz
   long-lived shell these pile up. Run `flush().` to see them.
 - **The output is gathered before it is printed.** Nothing is printed until
   the slowest node answers, so one slow node holds up the whole result.
+
+Benchmarking
+------------
+
+`bench` times `hit` and `fib` two ways. It runs them across the cluster, then
+in a single local process with no RPC, so you can see what distribution gains
+or costs. Printing isn't timed. Only the compute and the gather are.
+
+    1> bench:run().              % hit and fib, N=1000, 10 runs each
+    2> bench:run(fib, 20000).    % one module, chosen N, 10 runs
+    3> bench:run(hit, 5000, 50). % one module, chosen N, chosen run count
+
+Example output from three nodes on one laptop, in microseconds:
+
+    hit, N=1000, 10 runs (microseconds)
+      distributed  min      153  median      168  mean      192  max      297
+      local        min       32  median       45  mean       46  max       64
+    fib, N=1000, 10 runs (microseconds)
+      distributed  min      134  median      156  mean      158  max      194
+      local        min       18  median       22  mean       23  max       36
+
+Each benchmark does one warm-up run first, which isn't timed. Before timing
+anything, it checks that every node answered and raises an error if one
+didn't, so you never get numbers for a run that lost a chunk.
 
 Quick local smoke test
 ----------------------

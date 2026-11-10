@@ -9,12 +9,17 @@
 -module(hit).
 
 
--export([fizzbuzz/4, distribute/0, distribute/1]).
+-export([fizzbuzz/4, distribute/0, distribute/1, collect/1]).
 
 distribute() ->
     distribute(1000).
 
-distribute(Total) when is_integer(Total), Total > 0 ->
+distribute(Total) ->
+    lists:foreach(fun({Node, Text}) ->
+        io:format("Node: ~p | R: ~s~n", [Node, Text])
+    end, collect(Total)).
+
+collect(Total) when is_integer(Total), Total > 0 ->
     Nodes = ['node1@localhost', 'node2@localhost', 'node3@localhost'],
     Count = length(Nodes),
     ChunkSize = Total div Count,
@@ -32,25 +37,20 @@ distribute(Total) when is_integer(Total), Total > 0 ->
     Ordered = lists:keysort(2, Results),
 
     %% Simple nested comprehension: "For every result, and for every line in that result..."
-    Combined = [{NodeName, Line} || {done, _, NodeName, Data} <- Ordered, Line <- Data],
-
-    lists:foreach(fun({Node, Text}) ->
-        io:format("Node: ~p | R: ~s~n", [Node, Text])
-    end, Combined).
+    [{NodeName, Line} || {done, _, NodeName, Data} <- Ordered, Line <- Data].
 
 
 fizzbuzz(Parent, Index, Start, End) ->
     NumberList = lists:seq(Start, End),
 
     Solution = [solve(N) || N<- NumberList],
-    Flattened = [lists:flatten(Sub) || Sub <- Solution],
-    Parent ! {done, Index, node() , Flattened}.
+    Parent ! {done, Index, node() , Solution}.
 
 solve(N) ->
     solve(N, N rem 3, N rem 5).
 
-solve(N, 0, 0) -> io_lib:format("~p fizzbuzz", [N]);
-solve(N, 0, _) -> io_lib:format("~p fizz", [N]);
-solve(N, _, 0) -> io_lib:format("~p buzz", [N]);
-solve(N, _, _) -> io_lib:format("~p", [N]).
+solve(N, 0, 0) -> integer_to_list(N) ++ " fizzbuzz";
+solve(N, 0, _) -> integer_to_list(N) ++ " fizz";
+solve(N, _, 0) -> integer_to_list(N) ++ " buzz";
+solve(N, _, _) -> integer_to_list(N).
 
