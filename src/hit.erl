@@ -9,11 +9,13 @@
 -module(hit).
 
 
--export([fizzbuzz/4, distribute/0]).
+-export([fizzbuzz/4, distribute/0, distribute/1]).
 
 distribute() ->
+    distribute(1000).
+
+distribute(Total) when is_integer(Total), Total > 0 ->
     Nodes = ['node1@localhost', 'node2@localhost', 'node3@localhost'],
-    Total = 10,
     Count = length(Nodes),
     ChunkSize = Total div Count,
     Rem = Total rem Count,

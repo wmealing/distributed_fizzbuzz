@@ -4,7 +4,7 @@ distributed_fizzbuzz
 FizzBuzz, but spread across a cluster of Erlang nodes. Because some problems
 are too important to trust to a single machine.
 
-`hit:distribute/0` splits the range 1..10 into contiguous chunks, sends one
+`hit:distribute/0` splits the range 1..1000 into contiguous chunks, sends one
 chunk to each of three nodes with `rpc:async_call/4`, waits for every node to
 answer, puts the results back in order and prints each line along with the
 node that computed it.
@@ -39,22 +39,24 @@ shells:
     Node: node1@localhost | R: 1
     Node: node1@localhost | R: 2
     Node: node1@localhost | R: 3 fizz
-    Node: node1@localhost | R: 4
-    Node: node2@localhost | R: 5 buzz
-    Node: node2@localhost | R: 6 fizz
-    Node: node2@localhost | R: 7
-    Node: node3@localhost | R: 8
-    Node: node3@localhost | R: 9 fizz
-    Node: node3@localhost | R: 10 buzz
+    ...
+    Node: node1@localhost | R: 334
+    Node: node2@localhost | R: 335 buzz
+    ...
+    Node: node2@localhost | R: 667
+    Node: node3@localhost | R: 668
+    ...
+    Node: node3@localhost | R: 999 fizz
+    Node: node3@localhost | R: 1000 buzz
     ok
 
 The range is split as evenly as it can be. When it doesn't divide evenly, the
-first nodes each get one extra number, so 10 numbers on 3 nodes become 4, 3
-and 3.
+first nodes each get one extra number, so 1000 numbers on 3 nodes become
+334, 333 and 333.
 
 ### Running on separate machines
 
-1. Change the node list in `hit:distribute/0` to real hostnames, such as
+1. Change the node list in `hit:distribute/1` to real hostnames, such as
    `'node1@host-a'`.
 2. Start each node with `-sname` if the hosts resolve each other by short
    name, or with `-name node1@host-a.example.com` for fully qualified names.
@@ -68,9 +70,18 @@ and 3.
 
 ### Changing the workload
 
-The range (`Total = 10`) and the node list are hardcoded at the top of
-`hit:distribute/0`. Edit them and recompile (or run `r3:compile().` inside
-`rebar3 shell`) to try other sizes or cluster shapes.
+`hit:distribute/0` runs 1..1000. To pick your own range, pass the upper bound
+to `hit:distribute/1`:
+
+    1> hit:distribute(20).
+    Node: node1@localhost | R: 1
+    ...
+    Node: node3@localhost | R: 20 buzz
+    ok
+
+The node list is still hardcoded at the top of `hit:distribute/1`. Edit it and
+recompile (or run `r3:compile().` inside `rebar3 shell`) to try other cluster
+shapes.
 
 Benefits of distributed FizzBuzz
 --------------------------------
@@ -105,7 +116,7 @@ Drawbacks of distributed FizzBuzz
   single node could generate it with no copying at all.
 - **One failure loses the whole run.** If any node is down or unreachable,
   `rpc:yield/1` returns `{badrpc, nodedown}` for that chunk. The comprehension
-  in `distribute/0` then skips that chunk without a word, and you get
+  in `distribute/1` then skips that chunk without a word, and you get
   FizzBuzz with a gap in it. There are no retries and no reassignment to a
   healthy node.
 - **The cluster is static.** The node list is hardcoded, so you can't add or
@@ -120,7 +131,7 @@ Drawbacks of distributed FizzBuzz
   execution on every node in the cluster.
 - **It leaves messages behind.** `fizzbuzz/4` sends its result to `Parent`
   and also returns it as the RPC result. The caller uses the return value and
-  never receives the message, so each call to `distribute/0` leaves one
+  never receives the message, so each call to `distribute` leaves one
   `{done, ...}` message per node in the calling process's mailbox. In a
   long-lived shell these pile up. Run `flush().` to see them.
 - **The output is gathered before it is printed.** Nothing is printed until
