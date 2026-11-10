@@ -7,9 +7,7 @@
 %%% @end
 %%% Created : 10 Nov 2026 by Wade Mealing <wmealing@gmail.com>
 
-
 -module(bench).
-
 
 -export([run/0, run/2, run/3]).
 
@@ -22,9 +20,13 @@ run() ->
 run(Module, Total) ->
     run(Module, Total, ?RUNS).
 
-run(Module, Total, Runs) when (Module =:= hit orelse Module =:= fib),
-                              is_integer(Total), Total > 0,
-                              is_integer(Runs), Runs > 0 ->
+run(Module, Total, Runs) when
+    (Module =:= hit orelse Module =:= fib),
+    is_integer(Total),
+    Total > 0,
+    is_integer(Runs),
+    Runs > 0
+->
     check(Module, Total),
     Distributed = time(fun() -> distributed(Module, Total) end, Runs),
     Local = time(fun() -> local(Module, Total) end, Runs),
@@ -32,7 +34,6 @@ run(Module, Total, Runs) when (Module =:= hit orelse Module =:= fib),
     report("distributed", Distributed),
     report("local", Local),
     ok.
-
 
 %% Fail loudly up front, rather than timing a run that lost a chunk.
 check(fib, Total) ->
@@ -48,16 +49,23 @@ check(hit, Total) ->
         _ -> erlang:error({missing_results, Total - Got})
     end.
 
-distributed(fib, Total) -> fib:collect(Total);
-distributed(hit, Total) -> hit:collect(Total), flush().
+distributed(fib, Total) ->
+    fib:collect(Total);
+distributed(hit, Total) ->
+    hit:collect(Total),
+    flush().
 
-local(fib, Total) -> fib:sequence(1, 1, Total);
-local(hit, Total) -> hit:fizzbuzz(self(), 1, 1, Total), flush().
+local(fib, Total) ->
+    fib:sequence(1, 1, Total);
+local(hit, Total) ->
+    hit:fizzbuzz(self(), 1, 1, Total),
+    flush().
 
 %% hit:fizzbuzz/4 also sends its result to the caller. Drop those messages
 %% so the mailbox doesn't grow and slow down later runs.
 flush() ->
-    receive {done, _, _, _} -> flush()
+    receive
+        {done, _, _, _} -> flush()
     after 0 -> ok
     end.
 
@@ -68,6 +76,13 @@ time(Fun, Runs) ->
 report(Label, Times) ->
     Runs = length(Times),
     Mean = lists:sum(Times) div Runs,
-    io:format("  ~-12s min ~8w  median ~8w  mean ~8w  max ~8w~n",
-              [Label, hd(Times), lists:nth((Runs + 1) div 2, Times),
-               Mean, lists:last(Times)]).
+    io:format(
+        "  ~-12s min ~8w  median ~8w  mean ~8w  max ~8w~n",
+        [
+            Label,
+            hd(Times),
+            lists:nth((Runs + 1) div 2, Times),
+            Mean,
+            lists:last(Times)
+        ]
+    ).
